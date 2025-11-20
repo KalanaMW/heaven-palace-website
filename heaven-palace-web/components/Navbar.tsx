@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, User } from 'lucide-react';
+import AuthModal from './AuthModal';
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
@@ -15,7 +17,8 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className={`fixed w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-brand-dark/90 backdrop-blur-md py-4' : 'bg-transparent py-6'}`}>
+    <>
+    <nav className={`fixed w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-brand-dark/95 backdrop-blur-md py-4 shadow-md' : 'bg-transparent py-6'}`}>
       <div className="container mx-auto px-6 flex justify-between items-center">
         {/* Logo */}
         <Link href="/" className="relative z-50">
@@ -23,13 +26,22 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop Menu */}
-        <div className="hidden md:flex space-x-8 text-white text-sm tracking-widest uppercase font-light">
+        <div className="hidden md:flex space-x-8 text-white text-sm tracking-widest uppercase font-light items-center">
           <Link href="/" className="hover:text-brand-gold transition">Home</Link>
           <Link href="/location" className="hover:text-brand-gold transition">Location</Link>
           <Link href="/accommodation" className="hover:text-brand-gold transition">Accommodation</Link>
           <Link href="/dining" className="hover:text-brand-gold transition">Dining</Link>
           <Link href="/offers" className="hover:text-brand-gold transition">Offers</Link>
-          <Link href="/contact" className="hover:text-brand-gold transition">Contact Us</Link>
+          <Link href="/contact" className="hover:text-brand-gold transition">Contact</Link>
+          
+          {/* LOGIN BUTTON */}
+          <button 
+            onClick={() => setIsAuthOpen(true)}
+            className="flex items-center gap-2 text-white hover:text-brand-gold transition border-l border-white/20 pl-6"
+          >
+            <User size={16} />
+            <span className="font-bold text-xs">Login</span>
+          </button>
         </div>
 
         {/* CTA Button */}
@@ -51,9 +63,14 @@ export default function Navbar() {
              <Link href="/accommodation" onClick={() => setIsMobileMenuOpen(false)} className="text-xl uppercase tracking-widest">Accommodation</Link>
              <Link href="/offers" onClick={() => setIsMobileMenuOpen(false)} className="text-xl uppercase tracking-widest">Offers</Link>
              <Link href="/contact" onClick={() => setIsMobileMenuOpen(false)} className="text-xl uppercase tracking-widest">Contact</Link>
+             <button onClick={() => {setIsMobileMenuOpen(false); setIsAuthOpen(true);}} className="text-xl uppercase tracking-widest text-brand-gold">Login / Join</button>
           </div>
         )}
       </div>
     </nav>
+
+    {/* The Auth Modal Component */}
+    <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+    </>
   );
 }
