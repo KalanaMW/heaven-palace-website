@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Mail, Users, CalendarDays, LogOut } from 'lucide-react';
+import { LayoutDashboard, Mail, Users, CalendarDays, LogOut, Star, Home } from 'lucide-react';
 
 export default function AdminLayout({
   children,
@@ -32,6 +32,16 @@ export default function AdminLayout({
       name: 'Guests', 
       href: '/admin/guests', 
       icon: Users 
+    },
+    {
+      name: 'Reviews',
+      href: '/admin/reviews',
+      icon: Star,
+    },
+    {
+      name: 'Rooms & Rates',
+      href: '/admin/rooms',
+      icon: Home,
     },
   ];
 
