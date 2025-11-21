@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Mail, Lock, User, ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client'; 
+import { X, Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface AuthModalProps {
     isOpen: boolean;
@@ -11,24 +12,76 @@ interface AuthModalProps {
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     const [isLogin, setIsLogin] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false); // New state for visibility
+    const [fullName, setFullName] = useState('');
+    const [error, setError] = useState<string | null>(null);
+
+    const supabase = createClient();
+    const router = useRouter();
 
     if (!isOpen) return null;
+
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+
+        if (isLogin) {
+            // LOGIN LOGIC
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) {
+                setError(error.message);
+            } else {
+                onClose();
+                router.refresh();
+                router.push('/profile'); 
+            }
+        } else {
+            // SIGNUP LOGIC
+            const { error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        full_name: fullName,
+                    },
+                },
+            });
+
+            if (error) {
+                setError(error.message);
+            } else {
+                onClose();
+                alert('Check your email for the confirmation link!');
+            }
+        }
+        setLoading(false);
+    };
+
+    const handleSocialLogin = async (provider: 'google' | 'facebook') => {
+        await supabase.auth.signInWithOAuth({
+            provider: provider,
+            options: {
+                redirectTo: `${location.origin}/auth/callback`,
+            },
+        });
+    };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
             {/* Backdrop */}
-            <div 
-                className="absolute inset-0 bg-brand-dark/80 backdrop-blur-sm"
-                onClick={onClose}
-            ></div>
+            <div className="absolute inset-0 bg-brand-dark/80 backdrop-blur-sm" onClick={onClose}></div>
 
             {/* Modal Content */}
             <div className="relative bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl animate-fade-in-up">
-                
-                <button 
-                    onClick={onClose}
-                    className="absolute top-4 right-4 p-2 text-gray-400 hover:text-brand-dark hover:bg-gray-100 rounded-full transition z-10"
-                >
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-brand-dark hover:bg-gray-100 rounded-full transition z-10">
                     <X size={20} />
                 </button>
 
@@ -38,21 +91,27 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             {isLogin ? 'Welcome Back' : 'Join Heaven Palace'}
                         </h2>
                         <p className="text-sm text-gray-500">
-                            {isLogin 
-                                ? 'Log in to access your Relax & Reward points.' 
-                                : 'Sign up to unlock 10% off your first booking.'}
+                            {isLogin ? 'Log in to access your Relax & Reward points.' : 'Sign up to unlock 10% off.'}
                         </p>
                     </div>
 
-                    <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-                        
+                    {error && (
+                        <div className="bg-red-50 text-red-500 text-xs p-3 rounded mb-4 text-center font-bold">
+                            {error}
+                        </div>
+                    )}
+
+                    <form className="space-y-4" onSubmit={handleAuth}>
                         {!isLogin && (
                             <div className="relative">
                                 <User className="absolute left-3 top-3.5 text-gray-400" size={18} />
                                 <input 
                                     type="text" 
-                                    placeholder="Full Name" 
-                                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-brand-blue text-sm"
+                                    placeholder="Full Name"
+                                    required 
+                                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
                                 />
                             </div>
                         )}
@@ -61,32 +120,46 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             <Mail className="absolute left-3 top-3.5 text-gray-400" size={18} />
                             <input 
                                 type="email" 
-                                placeholder="Email Address" 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-brand-blue text-sm"
+                                placeholder="Email Address"
+                                required 
+                                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
                             />
                         </div>
 
                         <div className="relative">
                             <Lock className="absolute left-3 top-3.5 text-gray-400" size={18} />
                             <input 
-                                type="password" 
-                                placeholder="Password" 
-                                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-brand-blue text-sm"
+                                type={showPassword ? "text" : "password"} // Dynamic Type
+                                placeholder="Password"
+                                required 
+                                className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
                             />
+                            {/* Eye Toggle Button */}
+                            <button 
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-3.5 text-gray-400 hover:text-brand-blue transition"
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
 
-                        {isLogin && (
-                            <div className="text-right">
-                                <a href="#" className="text-xs text-brand-blue hover:underline">Forgot Password?</a>
-                            </div>
-                        )}
+                        <div className="text-right">
+                            <button type="button" className="text-xs text-brand-blue hover:underline">Forgot Password?</button>
+                        </div>
 
-                        {/* MOCK LOGIN - Links to Profile */}
-                        <Link href="/profile" onClick={onClose}>
-                            <button className="w-full bg-brand-dark text-white py-4 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-brand-blue transition mt-2 flex items-center justify-center gap-2">
-                                {isLogin ? 'Login' : 'Create Account'} <ArrowRight size={16} />
-                            </button>
-                        </Link>
+                        <button 
+                            type="submit" 
+                            disabled={loading}
+                            className="w-full bg-brand-dark text-white py-4 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-brand-blue transition mt-2 flex items-center justify-center gap-2 disabled:opacity-70"
+                        >
+                            {loading ? <Loader2 size={16} className="animate-spin"/> : (isLogin ? 'Login' : 'Create Account')} 
+                            {!loading && <ArrowRight size={16} />}
+                        </button>
                     </form>
 
                     <div className="mt-8 text-center border-t border-gray-100 pt-6">
@@ -94,7 +167,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         <div className="flex gap-3 justify-center">
                             
                             {/* GOOGLE BUTTON */}
-                            <button className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-2 group">
+                            <button 
+                                onClick={() => handleSocialLogin('google')}
+                                className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-2 group"
+                            >
                                 <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="presentation" focusable="false" style={{display: 'block', height: '20px', width: '20px'}} viewBox="0 0 32 32">
                                     <g fill="none">
                                         <path d="m30.7 16.340875c0-1.0635937-.0954375-2.0863125-.2727187-3.06825h-14.1272813v5.8022813h8.0727188c-.3477188 1.8749999-1.4044688 3.4636874-2.9931563 4.527375v3.7635937h4.8477188c2.8364062-2.6113125 4.4727187-6.4568438 4.4727187-11.025z" fill="#4285f4"></path>
@@ -107,7 +183,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             </button>
 
                             {/* FACEBOOK BUTTON */}
-                            <button className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-[#f0f6ff] transition flex items-center justify-center gap-2 group">
+                            <button 
+                                onClick={() => handleSocialLogin('facebook')}
+                                className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-[#f0f6ff] transition flex items-center justify-center gap-2 group"
+                            >
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style={{display: 'block', height: '20px', width: '20px'}}>
                                     <path d="m31.9361277 15.9680639c0-8.81884234-7.1492215-15.9680639-15.9680638-15.9680639-8.81884234 0-15.9680639 7.14922156-15.9680639 15.9680639 0 7.4883832 5.15576846 13.7721357 12.1108184 15.497964v-10.6181237h-3.29261481v-4.8798403h3.29261481v-2.1026747c0-5.4348902 2.4597205-7.95401195 7.7956087-7.95401195 1.0117366 0 2.7573653.19864271 3.4714571.3966467v4.42315365c-.3768463-.0396008-1.0315369-.0594012-1.8446307-.0594012-2.6181238 0-3.6298603.9919362-3.6298603 3.5704591v1.7258284h5.2158084l-.8961277 4.8798403h-4.3196807v10.9713373c7.9067465-.9548902 14.0333733-7.6870259 14.0333733-15.8511776z" fill="#0866ff"></path>
                                 </svg>
@@ -120,17 +199,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     <div className="mt-6 text-center">
                         <p className="text-xs text-gray-600">
                             {isLogin ? "Don't have an account? " : "Already have an account? "}
-                            <button 
-                                onClick={() => setIsLogin(!isLogin)}
-                                className="text-brand-blue font-bold hover:underline"
-                            >
+                            <button onClick={() => setIsLogin(!isLogin)} className="text-brand-blue font-bold hover:underline">
                                 {isLogin ? 'Sign Up' : 'Log In'}
                             </button>
                         </p>
                     </div>
                 </div>
                 
-                {/* Footer Banner */}
                 <div className="bg-brand-gold/10 p-4 text-center">
                     <p className="text-[10px] text-brand-gold font-bold uppercase tracking-wider">
                         {isLogin ? 'Member Benefits Await' : 'Join 2,000+ Happy Guests'}
