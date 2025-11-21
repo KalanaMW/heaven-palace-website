@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, Mail, Users, CalendarDays, LogOut, Star, Home } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 export default function AdminLayout({
   children,
@@ -10,6 +11,8 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
 
   // Define the menu items in an array to make the active logic cleaner
   const menuItems = [
@@ -36,6 +39,16 @@ export default function AdminLayout({
     {
       name: 'Reviews',
       href: '/admin/reviews',
+      icon: Star,
+    },
+    {
+      name: 'Add-ons',
+      href: '/admin/addons',
+      icon: Star,
+    },
+    {
+      name: 'Offers',
+      href: '/admin/offers',
       icon: Star,
     },
     {
@@ -79,7 +92,7 @@ export default function AdminLayout({
         </nav>
 
         <div className="p-4 border-t border-gray-800">
-          <button className="flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-gray-800/50 rounded transition w-full text-left">
+          <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); router.refresh(); }} className="flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-gray-800/50 rounded transition w-full text-left">
             <LogOut size={18} />
             <span className="text-sm uppercase tracking-wider">Logout</span>
           </button>

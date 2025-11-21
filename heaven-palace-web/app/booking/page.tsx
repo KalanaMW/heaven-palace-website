@@ -2,9 +2,11 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Check, Coffee, Car, Map as MapIcon, Edit2 } from 'lucide-react';
+import { Check, Coffee, Car, Map as MapIcon, Edit2, Star, Wifi, Utensils } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
@@ -31,7 +33,12 @@ function BookingContent() {
   const [dates, setDates] = useState({ checkIn: '', checkOut: '' });
   const [guests, setGuests] = useState(2);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+    const [selectedAddons, setSelectedAddons] = useState<number[]>([]);
+    const [addonsList, setAddonsList] = useState<any[]>([]); // NEW STATE
+
+    const supabase = createClient();
+    const router = useRouter();
+    const [isSubmitting, setIsSubmitting] = useState(false);
   const [guestDetails, setGuestDetails] = useState({ name: '', email: '', phone: '', notes: '' });
 
   // Initialize logic: Check URL for room ID
@@ -43,6 +50,56 @@ function BookingContent() {
     }
   }, [searchParams]);
 
+    // Fetch addons from Supabase
+    useEffect(() => {
+        const getAddons = async () => {
+            const { data } = await supabase.from('addons').select('*').order('id');
+            if (data) setAddonsList(data);
+        };
+        getAddons();
+    }, []);
+
+    // Handle booking confirmation and persist to DB
+    const handleConfirmBooking = async () => {
+        setIsSubmitting(true);
+
+        // 1. Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            alert('Please login to complete your booking');
+            setIsSubmitting(false);
+            return;
+        }
+
+        // 2. Insert booking
+        const { data: insertData, error } = await supabase
+            .from('bookings')
+            .insert([
+                {
+                    user_id: user.id,
+                    room_id: selectedRoomId,
+                    check_in: dates.checkIn,
+                    check_out: dates.checkOut,
+                    guests: guests,
+                    total_price: total,
+                    status: 'Pending'
+                }
+            ])
+            .select();
+
+        if (error) {
+            console.error(error);
+            alert('Booking failed. Please try again.');
+        } else {
+            setStep(4);
+            // Optionally refresh or navigate
+            router.refresh();
+        }
+
+        setIsSubmitting(false);
+    };
+
   const selectedRoom = ROOMS_DATA.find(r => r.id === selectedRoomId);
 
   // Calculation Logic
@@ -52,11 +109,21 @@ function BookingContent() {
       ? Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) 
       : 1;
   
-  const roomPrice = selectedRoom?.price || 0;
-  let total = roomPrice * nights;
-  if (selectedAddons.includes('bf')) total += (1500 * guests * nights);
-  if (selectedAddons.includes('pickup')) total += 25000;
-  if (selectedAddons.includes('tour')) total += 5000;
+    const roomPrice = selectedRoom?.price || 0;
+    let total = roomPrice * nights;
+
+    // Add-ons pricing computed from fetched addonsList
+    selectedAddons.forEach((addonId) => {
+        const addon = addonsList.find(a => a.id === addonId);
+        if (!addon) return;
+        // If the addon is breakfast (coffee icon) charge per guest per night
+        if (addon.icon === 'coffee') {
+            total += (addon.price * guests * nights);
+        } else {
+            // Otherwise charge once per booking
+            total += addon.price;
+        }
+    });
 
 
   return (
@@ -180,33 +247,36 @@ function BookingContent() {
                             <div className="animate-fade-in">
                                 <h2 className="text-2xl font-serif text-brand-dark mb-6">Enhance your stay</h2>
                                 <div className="space-y-4 mb-8">
-                                    {ADDONS.map((addon) => (
-                                        <label key={addon.id} className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-50 hover:border-brand-blue transition">
-                                            <div className="flex items-center gap-4">
-                                                <input 
-                                                    type="checkbox" 
-                                                    className="w-5 h-5 accent-brand-blue rounded"
-                                                    checked={selectedAddons.includes(addon.id)}
-                                                    onChange={(e) => {
-                                                        if(e.target.checked) setSelectedAddons([...selectedAddons, addon.id]);
-                                                        else setSelectedAddons(selectedAddons.filter(id => id !== addon.id));
-                                                    }}
-                                                />
-                                                <div className="bg-blue-50 p-2 rounded text-brand-blue">
-                                                    <addon.icon size={20} />
+                                    {addonsList.map((addon) => {
+                                        const IconComp = addon.icon === 'coffee' ? Coffee : (addon.icon === 'car' ? Car : (addon.icon === 'map' ? MapIcon : (addon.icon === 'wifi' ? Wifi : (addon.icon === 'food' ? Utensils : Star))));
+                                        return (
+                                            <label key={addon.id} className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-50 hover:border-brand-blue transition">
+                                                <div className="flex items-center gap-4">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="w-5 h-5 accent-brand-blue rounded"
+                                                        checked={selectedAddons.includes(addon.id)}
+                                                        onChange={(e) => {
+                                                            if(e.target.checked) setSelectedAddons([...selectedAddons, addon.id]);
+                                                            else setSelectedAddons(selectedAddons.filter(id => id !== addon.id));
+                                                        }}
+                                                    />
+                                                    <div className="bg-blue-50 p-2 rounded text-brand-blue">
+                                                        <IconComp size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-sm text-brand-dark">{addon.name}</p>
+                                                        <p className="text-xs text-gray-500">{addon.description || addon.desc}</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-bold text-sm text-brand-dark">{addon.name}</p>
-                                                    <p className="text-xs text-gray-500">{addon.desc}</p>
-                                                </div>
-                                            </div>
-                                            <span className="text-sm font-bold text-gray-600">+ {addon.price.toLocaleString()}</span>
-                                        </label>
-                                    ))}
+                                                <span className="text-sm font-bold text-gray-600">+ {addon.price.toLocaleString()}</span>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
 
                                 <div className="flex gap-4">
-                                    <button onClick={() => setStep(1)} className="w-1/3 border border-gray-300 py-4 font-bold uppercase tracking-widest text-xs">Back</button>
+                                    <button onClick={() => setStep(2)} className="w-1/3 border border-gray-300 py-4 font-bold uppercase tracking-widest text-xs">Back</button>
                                     <button onClick={() => setStep(3)} className="w-2/3 bg-brand-blue text-white py-4 font-bold uppercase tracking-widest hover:bg-blue-800">Continue to Details</button>
                                 </div>
                             </div>
@@ -262,7 +332,9 @@ function BookingContent() {
 
                                 <div className="flex gap-4">
                                     <button onClick={() => setStep(2)} className="w-1/3 border border-gray-300 py-4 font-bold uppercase tracking-widest text-xs">Back</button>
-                                    <button onClick={() => setStep(4)} className="w-2/3 bg-brand-blue text-white py-4 font-bold uppercase tracking-widest hover:bg-blue-800">Confirm Booking</button>
+                                    <button onClick={handleConfirmBooking} disabled={isSubmitting} className="w-2/3 bg-brand-blue text-white py-4 font-bold uppercase tracking-widest hover:bg-blue-800 disabled:opacity-60">
+                                        {isSubmitting ? 'Processing...' : 'Confirm Booking'}
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -327,9 +399,9 @@ function BookingContent() {
                                         <span>{(roomPrice * nights).toLocaleString()}</span>
                                     </div>
                                     {selectedAddons.map(addonId => {
-                                        const addon = ADDONS.find(a => a.id === addonId);
+                                        const addon = addonsList.find(a => a.id === addonId);
                                         if(!addon) return null;
-                                        const price = (addon.id === 'bf') ? (addon.price * guests * nights) : addon.price;
+                                        const price = (addon.icon === 'coffee') ? (addon.price * guests * nights) : addon.price;
                                         return (
                                             <div key={addonId} className="flex justify-between text-brand-blue">
                                                 <span>{addon.name}</span>

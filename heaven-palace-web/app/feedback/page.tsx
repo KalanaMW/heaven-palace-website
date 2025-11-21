@@ -28,10 +28,20 @@ export default function FeedbackPage() {
     );
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50 font-sans">
-      <Navbar />
-      <div className="container mx-auto px-6 py-24 max-w-3xl">
+    return (
+        <main className="min-h-screen bg-gray-50 font-sans">
+            <Navbar />
+
+            {/* HERO */}
+            <section className="relative h-48 w-full flex items-center justify-center bg-[url('/images/home/feedback-hero.jpg')] bg-cover bg-center">
+                <div className="absolute inset-0 bg-black/40" />
+                <div className="relative z-10 text-center text-white px-6">
+                    <h1 className="text-3xl font-serif mb-2">Share Your Experience</h1>
+                    <p className="opacity-90">We value your thoughts — it helps us improve.</p>
+                </div>
+            </section>
+
+            <div className="container mx-auto px-6 py-24 max-w-3xl">
         
         <div className="bg-white p-8 md:p-12 shadow-xl rounded-xl border-t-4 border-brand-gold">
             <h1 className="text-3xl font-serif text-brand-dark mb-2">How was your stay?</h1>

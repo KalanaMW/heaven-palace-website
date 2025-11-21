@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { createClient } from '@/utils/supabase/client'; 
-import { X, Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff, Phone } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface AuthModalProps {
@@ -17,6 +17,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false); // New state for visibility
     const [fullName, setFullName] = useState('');
+    const [phone, setPhone] = useState(''); // NEW: phone field
     const [error, setError] = useState<string | null>(null);
 
     const supabase = createClient();
@@ -29,39 +30,66 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setLoading(true);
         setError(null);
 
-        if (isLogin) {
-            // LOGIN LOGIC
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
+        try {
+            if (isLogin) {
+                // LOGIN LOGIC
+                setError(null);
+                const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
 
-            if (error) {
-                setError(error.message);
+                if (authError) {
+                    setError(authError.message);
+                    setLoading(false);
+                    return;
+                }
+
+                // CHECK ROLE (Admin vs User)
+                if (authData?.user) {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', authData.user.id)
+                        .single();
+
+                    onClose();
+                    router.refresh();
+
+                    if (profile?.role === 'admin') {
+                        router.push('/admin/dashboard'); // Admin Redirect
+                    } else {
+                        router.push('/profile'); // User Redirect
+                    }
+                }
             } else {
-                onClose();
-                router.refresh();
-                router.push('/profile'); 
-            }
-        } else {
-            // SIGNUP LOGIC
-            const { error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: {
-                        full_name: fullName,
+                // SIGNUP LOGIC
+                const { error: signError } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: {
+                            full_name: fullName,
+                            phone: phone, // Save Phone to Metadata
+                        },
                     },
-                },
-            });
+                });
 
-            if (error) {
-                setError(error.message);
-            } else {
-                onClose();
-                alert('Check your email for the confirmation link!');
+                if (signError) {
+                    setError(signError.message);
+                } else {
+                    // SUCCESS: No alert, just go to profile
+                    // Note: This requires "Confirm Email" to be disabled in Supabase settings
+                    onClose();
+                    router.refresh();
+                    router.push('/profile');
+                }
             }
+        } catch (err: any) {
+            console.error(err);
+            setError(err?.message || 'Unexpected error');
         }
+
         setLoading(false);
     };
 
@@ -103,17 +131,30 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
                     <form className="space-y-4" onSubmit={handleAuth}>
                         {!isLogin && (
-                            <div className="relative">
-                                <User className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                                <input 
-                                    type="text" 
-                                    placeholder="Full Name"
-                                    required 
-                                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                />
-                            </div>
+                            <>
+                                <div className="relative">
+                                    <User className="absolute left-3 top-3.5 text-gray-400" size={18} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Full Name"
+                                        required 
+                                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                                        value={fullName}
+                                        onChange={(e) => setFullName(e.target.value)}
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Phone className="absolute left-3 top-3.5 text-gray-400" size={18} />
+                                    <input 
+                                        type="tel"
+                                        placeholder="Phone (+94 7X...)"
+                                        required
+                                        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                    />
+                                </div>
+                            </>
                         )}
 
                         <div className="relative">
