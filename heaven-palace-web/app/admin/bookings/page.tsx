@@ -2,60 +2,74 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { Calendar, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, Loader2, Filter } from 'lucide-react';
 
 export default function AdminBookings() {
   const supabase = createClient();
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
 
-  // Fetch Bookings with Relations (Join tables)
   const fetchBookings = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        *,
-        profiles:user_id (full_name, email, phone),
-        rooms:room_id (name)
-      `)
-      .order('created_at', { ascending: false });
+        // Fetch ALL bookings first (Supabase Policy allows Admin to see all)
+        const { data, error } = await supabase
+            .from('bookings')
+            .select(`
+                *,
+                profiles (full_name, email, phone),
+                rooms (name)
+            `)
+            .order('created_at', { ascending: false });
 
-    if (data) setBookings(data);
+        if (error) {
+                console.error("Error fetching bookings:", error.message || error);
+        }
+        if (data) setBookings(data);
     setLoading(false);
   };
 
   useEffect(() => { fetchBookings(); }, []);
 
-  // Update Status
+  // Handle Status Update
   const updateStatus = async (id: string, newStatus: string) => {
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: newStatus })
-      .eq('id', id);
+    // Optimistic UI Update
+    setBookings(bookings.map(b => b.id === id ? { ...b, status: newStatus } : b));
 
-    if (!error) {
-      fetchBookings(); // Refresh list
+    const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
+    
+    if (error) {
+        alert("Update failed");
+        fetchBookings(); // Revert
     } else {
-        alert("Error updating booking");
+        // TRIGGER EMAIL HERE IF NEEDED (e.g. Booking Confirmed Email)
+        // We can reuse the /api/send logic here if you want "Booking Confirmed" email.
     }
   };
 
-  const filteredBookings = filter === 'All' ? bookings : bookings.filter(b => b.status === filter);
+  // Client-Side Filtering
+  const displayedBookings = statusFilter === 'All' 
+    ? bookings 
+    : bookings.filter(b => b.status.toLowerCase() === statusFilter.toLowerCase());
 
-  if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin mx-auto"/> Loading Reservations...</div>;
+  if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin mx-auto"/> Loading...</div>;
 
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-serif font-bold text-brand-dark">Reservations</h1>
-          <div className="flex gap-2">
+          
+          {/* STATUS FILTER */}
+          <div className="flex bg-white p-1 rounded-lg border">
               {['All', 'Pending', 'Confirmed', 'Cancelled'].map(status => (
                   <button 
                     key={status}
-                    onClick={() => setFilter(status)}
-                    className={`px-4 py-2 rounded text-xs font-bold uppercase ${filter === status ? 'bg-brand-blue text-white' : 'bg-white border text-gray-500'}`}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition ${
+                        statusFilter === status 
+                        ? 'bg-brand-blue text-white shadow-sm' 
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
                   >
                       {status}
                   </button>
@@ -65,75 +79,66 @@ export default function AdminBookings() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <table className="w-full text-sm text-left">
-            <thead className="bg-brand-dark text-white font-bold uppercase tracking-wider text-xs">
+            <thead className="bg-gray-50 text-gray-500 font-bold uppercase tracking-wider text-xs border-b">
                 <tr>
-                    <th className="p-4">Ref ID</th>
-                    <th className="p-4">Guest Details</th>
-                    <th className="p-4">Room & Dates</th>
-                    <th className="p-4">Amount</th>
-                    <th className="p-4">Status</th>
+                    <th className="p-4">Booking Ref</th>
+                    <th className="p-4">Guest</th>
+                    <th className="p-4">Room Details</th>
+                    <th className="p-4 text-right">Total</th>
+                    <th className="p-4 text-center">Status</th>
                     <th className="p-4 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-                {filteredBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-gray-50">
-                        <td className="p-4 font-mono text-xs text-gray-500">#{String(booking.id).slice(0,6)}</td>
+                {displayedBookings.map((booking) => (
+                    <tr key={booking.id} className="hover:bg-gray-50 transition">
+                        <td className="p-4 font-mono text-xs text-gray-400">
+                            {String(booking.id).slice(0, 8).toUpperCase()}
+                        </td>
                         <td className="p-4">
                             <p className="font-bold text-brand-dark">{booking.profiles?.full_name || 'Unknown'}</p>
                             <p className="text-xs text-gray-500">{booking.profiles?.email}</p>
-                            <p className="text-xs text-brand-blue">{booking.profiles?.phone}</p>
                         </td>
                         <td className="p-4">
-                            <p className="font-bold text-brand-dark">{booking.rooms?.name}</p>
+                            <p className="font-medium">{booking.rooms?.name}</p>
                             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
                                 <Calendar size={12}/> 
-                                {new Date(booking.check_in).toLocaleDateString()} - {new Date(booking.check_out).toLocaleDateString()}
+                                {booking.check_in} <span className="mx-1">→</span> {booking.check_out}
                             </div>
                         </td>
-                        <td className="p-4 font-mono font-bold text-brand-blue">
-                            LKR {booking.total_price.toLocaleString()}
+                        <td className="p-4 text-right font-mono font-bold text-brand-blue">
+                            {booking.total_price?.toLocaleString()}
                         </td>
-                        <td className="p-4">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center w-fit gap-1 ${
+                        <td className="p-4 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
                                 booking.status === 'Confirmed' ? 'bg-green-100 text-green-700' :
                                 booking.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
                                 'bg-red-100 text-red-700'
                             }`}>
-                                {booking.status === 'Pending' && <Clock size={10} />}
-                                {booking.status === 'Confirmed' && <CheckCircle size={10} />}
                                 {booking.status}
                             </span>
                         </td>
                         <td className="p-4 text-right">
                             {booking.status === 'Pending' && (
                                 <div className="flex justify-end gap-2">
-                                    <button 
-                                        onClick={() => updateStatus(booking.id, 'Confirmed')}
-                                        className="p-2 bg-green-50 text-green-600 hover:bg-green-100 rounded" 
-                                        title="Confirm Booking"
-                                    >
-                                        <CheckCircle size={18} />
+                                    <button onClick={() => updateStatus(booking.id, 'Confirmed')} className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100" title="Confirm">
+                                        <CheckCircle size={16} />
                                     </button>
-                                    <button 
-                                        onClick={() => updateStatus(booking.id, 'Cancelled')}
-                                        className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded" 
-                                        title="Cancel Booking"
-                                    >
-                                        <XCircle size={18} />
+                                    <button onClick={() => updateStatus(booking.id, 'Cancelled')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100" title="Cancel">
+                                        <XCircle size={16} />
                                     </button>
                                 </div>
-                            )}
-                            {booking.status === 'Confirmed' && (
-                                <button className="text-xs font-bold text-brand-blue hover:underline">Send Invoice</button>
                             )}
                         </td>
                     </tr>
                 ))}
             </tbody>
         </table>
-        {filteredBookings.length === 0 && (
-            <div className="p-8 text-center text-gray-400">No bookings found in this category.</div>
+        
+        {displayedBookings.length === 0 && (
+            <div className="p-12 text-center text-gray-400">
+                No bookings found.
+            </div>
         )}
       </div>
     </div>

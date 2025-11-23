@@ -39,7 +39,7 @@ const ACTIVITIES = [
     category: "Heritage",
     duration: "2 Hours",
     price: "LKR 4,000 / person",
-    image: "/images/home/exp-1.jpg",
+    image: "/images/home/exp-4.jpg",
     description: "Visit the historic Hantana Tea Factory. Learn the tea-making process and enjoy a cup of the finest BOPF tea."
   }
 ];
@@ -52,7 +52,7 @@ export default function ExperiencesPage() {
       {/* HERO */}
       <section className="relative h-[60vh] w-full flex items-center justify-center">
         <Image
-          src="/images/home/exp-2.svg"
+          src="/images/home/exp-2.jpg"
           alt="Experiences Hero"
           fill
           className="object-cover brightness-50"

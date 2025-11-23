@@ -11,6 +11,16 @@ const nextConfig: NextConfig = {
         pathname: '/images/**',
       },
     ],
+    // Allow images served from Supabase storage public buckets
+    remotePatterns: [
+      {
+        protocol: 'https',
+        // allow project-specific subdomains like mrkgmbepenpqmvcktkpr.supabase.co
+        hostname: '*.supabase.co',
+        // match the public storage URL path
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
   },
 };
 

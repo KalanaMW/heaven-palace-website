@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation'; 
 import { createClient } from '@/utils/supabase/client'; 
-import { Award, Calendar, LogOut, User, Camera, Edit2, Save, MapPin, Star, ChevronRight, Loader2 } from 'lucide-react';
+import { Award, Calendar, LogOut, User, Camera, Edit2, Save, MapPin, Star, X, Gift, Loader2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
@@ -14,46 +14,91 @@ export default function ProfilePage() {
   
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
-  const [bookings, setBookings] = useState<any[]>([]); // State for real bookings
+  const [bookings, setBookings] = useState<any[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  
+  // Rewards State
+  const [showRewards, setShowRewards] = useState(false);
+  const [rewards, setRewards] = useState<any[]>([]);
+  const [points, setPoints] = useState(0);
+
+  // Edit Form State
+  const [formData, setFormData] = useState({ full_name: '', phone: '' });
 
   useEffect(() => {
-    const getData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        router.push('/'); 
-        return;
-      }
+        const getData = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
 
-      // 1. Get Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      
-      if (profileData) setProfile(profileData);
+            if (!user) {
+                router.push('/');
+                return;
+            }
 
-      // 2. Get Bookings (Joined with Rooms to get image/name)
-      const { data: bookingData, error } = await supabase
-        .from('bookings')
-        .select(`
-            *,
-            rooms (
-                name,
-                images
-            )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+            // 1. Get Profile (Safe Mode)
+            let { data: profileData, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .maybeSingle();
 
-      if (bookingData) setBookings(bookingData);
+            // SELF-HEAL: If profile is missing, create it immediately
+            if (!profileData) {
+                    console.log('Profile missing. Creating default profile...');
+                    const { data: newProfile, error: createError } = await supabase
+                            .from('profiles')
+                            .insert([{
+                                    id: user.id,
+                                    email: user.email,
+                                    full_name: user.user_metadata?.full_name || 'New Guest',
+                                    role: 'user'
+                            }])
+                            .select()
+                            .single();
+
+                    if (newProfile) {
+                            profileData = newProfile;
+                    } else if (createError) {
+                            console.error('Failed to create profile:', createError.message || createError);
+                    }
+            }
+
+            if (profileData) {
+                    setProfile(profileData);
+                    // Safe setting of form data
+                    setFormData({ 
+                            full_name: profileData.full_name || '', 
+                            phone: profileData.phone || '' 
+                    });
+                    setAvatarUrl(profileData.avatar_url);
+            }
+
+            // 2. Get Bookings
+            const { data: bookingData } = await supabase
+                .from('bookings')
+                .select(`*, rooms (name, images)`)
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (bookingData) {
+                    setBookings(bookingData);
+          
+                    // Calculate Points
+                    const totalSpent = bookingData
+                        .filter(b => b.status === 'Confirmed')
+                        .reduce((sum, b) => sum + b.total_price, 0);
+          
+                    setPoints(Math.floor(totalSpent / 100));
+            }
+
+            // 3. Fetch Rewards Catalog
+            const { data: rewardData } = await supabase.from('rewards').select('*');
+            if(rewardData) setRewards(rewardData);
       
-      setLoading(false);
-    };
-    getData();
-  }, []);
+            setLoading(false);
+        };
+        getData();
+    }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -61,14 +106,83 @@ export default function ProfilePage() {
     router.push('/');
   };
 
-  // Calculate Loyalty Progress (Mock logic based on point balance)
-  const currentPoints = profile?.points || 0;
+  const handleUpdateProfile = async () => {
+            if (!profile?.id) {
+                alert('Profile not available. Please sign out and sign in again.');
+                return;
+            }
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({ full_name: formData.full_name, phone: formData.phone })
+                .eq('id', profile.id);
+
+            if (!error) {
+                    setProfile({ ...profile, ...formData });
+                    setIsEditing(false);
+            } else {
+                    console.error('Profile update failed:', error);
+            }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+            if (!e.target.files || !e.target.files[0]) return;
+            if (!profile?.id) {
+                alert('Profile missing; cannot upload avatar.');
+                return;
+            }
+
+            const file = e.target.files[0];
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
+
+            // Upload
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, file);
+
+            if (uploadError) {
+                    console.error('Avatar upload failed:', uploadError);
+                    alert('Error uploading avatar');
+                    return;
+            }
+
+            // Get URL
+            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+            // Update Profile (guarded)
+            const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', profile.id);
+            if (updateError) console.error('Failed to update profile avatar_url:', updateError);
+            setAvatarUrl(publicUrl);
+  };
+
+  // Claim Reward Logic (Simple Alert for now)
+  const handleClaim = (reward: any) => {
+      if (points >= reward.points_cost) {
+          alert(`You have claimed: ${reward.title}! Show this screen at reception.`);
+          // Ideally, you'd deduct points in DB here
+      } else {
+          alert("Not enough points yet!");
+      }
+  };
+
   const nextTierPoints = 15000;
-  const progress = Math.min((currentPoints / nextTierPoints) * 100, 100);
+  const progress = Math.min((points / nextTierPoints) * 100, 100);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-gold" size={40}/></div>;
+    if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-gold" size={40}/></div>;
 
-  return (
+    // If we finished loading but profile is missing, show a helpful fallback
+    if (!profile) return (
+        <div className="h-screen flex flex-col items-center justify-center text-center p-6">
+                <h2 className="text-2xl font-serif text-brand-dark mb-4">Account Setup Incomplete</h2>
+                <p className="text-gray-500 mb-6">We couldn't load your profile data. Please try signing out and back in.</p>
+                <button onClick={handleSignOut} className="bg-brand-blue text-white px-6 py-3 rounded uppercase text-xs font-bold">
+                        Sign Out & Retry
+                </button>
+        </div>
+    );
+
+    return (
     <main className="min-h-screen bg-gray-50 font-sans">
       <Navbar />
 
@@ -81,11 +195,16 @@ export default function ProfilePage() {
             <div className="flex flex-col md:flex-row items-center gap-8 w-full">
                 {/* Avatar */}
                 <div className="relative group">
-                    <div className="w-32 h-32 rounded-full border-4 border-white/20 overflow-hidden bg-brand-gold/20 backdrop-blur-sm shadow-2xl flex items-center justify-center text-5xl font-serif text-white font-bold">
-                        {profile?.full_name?.charAt(0)}
+                    <div className="w-32 h-32 rounded-full border-4 border-white/20 overflow-hidden bg-brand-gold/20 backdrop-blur-sm shadow-2xl flex items-center justify-center text-5xl font-serif text-white font-bold relative">
+                        {avatarUrl ? (
+                            <Image src={avatarUrl} alt="Avatar" fill className="object-cover" />
+                        ) : (
+                            profile?.full_name?.charAt(0)
+                        )}
                     </div>
-                    <label className="absolute bottom-0 right-0 bg-brand-blue text-white p-2 rounded-full cursor-pointer hover:bg-blue-600 transition shadow-lg">
+                    <label className="absolute bottom-0 right-0 bg-brand-blue text-white p-2 rounded-full cursor-pointer hover:bg-blue-600 transition shadow-lg z-10">
                         <Camera size={16} />
+                        <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
                     </label>
                 </div>
 
@@ -122,16 +241,19 @@ export default function ProfilePage() {
                         <h3 className="font-serif text-lg mb-1">Relax & Reward</h3>
                         <p className="text-xs text-gray-400 mb-6 uppercase tracking-widest">Membership Status</p>
                         <div className="flex items-end gap-2 mb-2">
-                            <span className="text-4xl font-bold text-brand-gold">{currentPoints.toLocaleString()}</span>
+                            <span className="text-4xl font-bold text-brand-gold">{points.toLocaleString()}</span>
                             <span className="text-sm text-gray-400 mb-1">pts</span>
                         </div>
                         <div className="w-full bg-white/10 h-2 rounded-full mb-4 overflow-hidden">
                             <div className="bg-gradient-to-r from-brand-gold to-yellow-200 h-full rounded-full" style={{ width: `${progress}%` }}></div>
                         </div>
                         <p className="text-xs text-gray-400 leading-relaxed mb-6">
-                            You are <strong>{(nextTierPoints - currentPoints).toLocaleString()} points</strong> away from Platinum Tier.
+                            Earn 1 point for every 100 LKR spent.
                         </p>
-                        <button className="w-full py-3 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition flex justify-center items-center gap-2">
+                        <button 
+                            onClick={() => setShowRewards(true)}
+                            className="w-full py-3 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition flex justify-center items-center gap-2"
+                        >
                             <Award size={16} /> View Rewards Catalog
                         </button>
                     </div>
@@ -145,14 +267,21 @@ export default function ProfilePage() {
                 <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="font-serif text-xl text-brand-dark">Personal Information</h3>
-                        <button onClick={() => setIsEditing(!isEditing)} className="text-brand-blue text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <button 
+                            onClick={() => isEditing ? handleUpdateProfile() : setIsEditing(true)}
+                            className="text-brand-blue text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+                        >
                             {isEditing ? <><Save size={14}/> Save</> : <><Edit2 size={14}/> Edit Details</>}
                         </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
-                            <p className="text-brand-dark font-medium p-2">{profile?.full_name}</p>
+                            {isEditing ? (
+                                <input className="border p-2 w-full rounded" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                            ) : (
+                                <p className="text-brand-dark font-medium p-2">{profile?.full_name}</p>
+                            )}
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email</label>
@@ -160,7 +289,11 @@ export default function ProfilePage() {
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Phone</label>
-                            <p className="text-brand-dark font-medium p-2">{profile?.phone || 'Not Provided'}</p>
+                            {isEditing ? (
+                                <input className="border p-2 w-full rounded" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                            ) : (
+                                <p className="text-brand-dark font-medium p-2">{profile?.phone || 'Not Provided'}</p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -222,7 +355,82 @@ export default function ProfilePage() {
             </div>
         </div>
       </div>
+
       <Footer />
+
+      {/* REWARDS MODAL */}
+      {showRewards && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowRewards(false)}></div>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl relative z-10 overflow-hidden max-h-[80vh] flex flex-col animate-fade-in-up">
+                  
+                  {/* Header */}
+                  <div className="p-6 border-b flex justify-between items-center bg-brand-dark text-white">
+                      <div>
+                        <h2 className="text-2xl font-serif">Rewards Catalog</h2>
+                        <p className="text-xs text-gray-400">Your Balance: <span className="text-brand-gold font-bold text-sm">{points} pts</span></p>
+                      </div>
+                      <button onClick={() => setShowRewards(false)} className="hover:bg-white/10 p-2 rounded-full transition"><X size={24}/></button>
+                  </div>
+
+                  {/* Grid */}
+                  <div className="p-6 overflow-y-auto bg-gray-50">
+                      {rewards.length === 0 ? (
+                          <div className="text-center py-10 text-gray-500">Loading rewards...</div>
+                      ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {rewards.map(reward => {
+                                  const canClaim = points >= reward.points_cost;
+                                  const percent = Math.min((points / reward.points_cost) * 100, 100);
+
+                                  return (
+                                      <div key={reward.id} className={`border rounded-xl p-5 bg-white shadow-sm transition relative overflow-hidden ${canClaim ? 'border-green-500 ring-1 ring-green-500/20' : 'border-gray-200 opacity-90'}`}>
+                                          
+                                          <div className="flex justify-between items-start mb-3">
+                                              <div className="p-3 bg-brand-gold/10 text-brand-gold rounded-lg">
+                                                  <Gift size={24}/>
+                                              </div>
+                                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${canClaim ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                  {reward.points_cost} pts
+                                              </span>
+                                          </div>
+
+                                          <h4 className="font-bold text-brand-dark text-lg mb-2">{reward.title}</h4>
+                                          <p className="text-xs text-gray-500 mb-6 min-h-[40px]">{reward.description}</p>
+
+                                          {/* Progress Bar logic */}
+                                          {!canClaim && (
+                                              <div className="mb-4">
+                                                  <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                                                      <span>Progress</span>
+                                                      <span>Need {reward.points_cost - points} more</span>
+                                                  </div>
+                                                  <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                                      <div className="bg-brand-gold h-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                                  </div>
+                                              </div>
+                                          )}
+
+                                          <button 
+                                            onClick={() => handleClaim(reward)}
+                                            disabled={!canClaim}
+                                            className={`w-full py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition flex items-center justify-center gap-2 ${
+                                                canClaim 
+                                                ? 'bg-brand-dark text-white hover:bg-brand-blue shadow-lg' 
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                          >
+                                              {canClaim ? 'Claim Reward' : 'Locked'}
+                                          </button>
+                                      </div>
+                                  );
+                              })}
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
     </main>
   );
 }

@@ -72,8 +72,8 @@ function BookingContent() {
             return;
         }
 
-        // 2. Insert booking
-        const { data: insertData, error } = await supabase
+        // 2. Insert booking and get inserted row back
+        const { data: booking, error } = await supabase
             .from('bookings')
             .insert([
                 {
@@ -86,12 +86,38 @@ function BookingContent() {
                     status: 'Pending'
                 }
             ])
-            .select();
+            .select()
+            .single();
 
         if (error) {
             console.error(error);
             alert('Booking failed. Please try again.');
         } else {
+            // 3. SEND EMAIL (non-blocking)
+            try {
+                await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: guestDetails.email || user.email,
+                        subject: `Booking Confirmation #${String(booking.id).slice(0,8)}`,
+                        html: `
+                            <h1>Thank you for booking with Heaven Palace!</h1>
+                            <p>Dear ${guestDetails.name || user.user_metadata?.full_name || ''},</p>
+                            <p>We have received your booking request for <strong>${selectedRoom?.name || 'your selected room'}</strong>.</p>
+                            <p><strong>Dates:</strong> ${dates.checkIn} to ${dates.checkOut}</p>
+                            <p><strong>Total:</strong> LKR ${total.toLocaleString()}</p>
+                            <p>Status: <strong>Pending Approval</strong></p>
+                            <br/>
+                            <p>Our team will contact you shortly via WhatsApp (${guestDetails.phone}) to confirm details.</p>
+                        `
+                    })
+                });
+            } catch (emailError) {
+                console.error('Email sending failed', emailError);
+                // Continue — do not block on email failures
+            }
+
             setStep(4);
             // Optionally refresh or navigate
             router.refresh();
