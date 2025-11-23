@@ -97,13 +97,14 @@ export default function ContactPage() {
                 
                 {/* Embedded Map (Using Kandy coordinates placeholder) */}
                 <div className="w-full h-[400px] bg-gray-200 rounded-xl overflow-hidden relative">
-                    <iframe 
-                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d31606.688631478212!2d80.61724959430373!3d7.290571531751848!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae366266498acd3%3A0x411a3818a1e03c35!2sKandy!5e0!3m2!1sen!2slk!4v1645521345678!5m2!1sen!2slk" 
-                        width="100%" 
-                        height="100%" 
-                        style={{ border: 0 }} 
-                        allowFullScreen 
+                    <iframe
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3957.1030309943044!2d80.59177187476122!3d7.342325892666322!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae3432f6b56a409%3A0x53743dcd24ac9fe8!2sHeaven%20Palace!5e0!3m2!1sen!2slk!4v1763725077517!5m2!1sen!2slk"
+                        width="100%"
+                        height="100%"
+                        style={{ border: 0 }}
+                        allowFullScreen
                         loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
                         className="grayscale hover:grayscale-0 transition duration-700"
                     ></iframe>
                     <div className="absolute bottom-4 left-4 bg-white p-3 rounded shadow-lg flex items-center gap-2">
